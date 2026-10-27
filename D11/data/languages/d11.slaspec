@@ -144,7 +144,8 @@ macro pop(v) {
 	v = *[callstack]:2 SP;
 }
 
-# ---- arithmetic. 1cL add, 1dL sub: L bit 0 = use the carry, bit 1 = set the carry
+# ---- arithmetic. 1cL add, 1dL sub: L bit 0 = use the carry, bit 1 = set the carry.
+# The module (upstream) also decodes the copies 18L and 19L; neither the documentation nor b43 lists them.
 
 macro addCarry(a, b, d, useC, setC) {
 	local c:4 = 0;
@@ -158,37 +159,37 @@ macro addCarry(a, b, d, useC, setC) {
 <done>
 }
 
-:add A, B, D is top=0 & opcode=0x1C0 & A & B & D {
+:add A, B, D is top=0 & (opcode=0x1C0 | opcode=0x180) & A & B & D {
 	D = A + B;
 }
-:addc A, B, D is top=0 & opcode=0x1C1 & A & B & D {
+:addc A, B, D is top=0 & (opcode=0x1C1 | opcode=0x181) & A & B & D {
 	local t:4 = zext(A) + zext(B) + zext(CF);
 	D = t:2;
 }
-:"add." A, B, D is top=0 & opcode=0x1C2 & A & B & D {
+:"add." A, B, D is top=0 & (opcode=0x1C2 | opcode=0x182) & A & B & D {
 	local t:4 = zext(A) + zext(B);
 	D = t:2;
 	CF = (t > 0xFFFF);
 }
-:"addc." A, B, D is top=0 & opcode=0x1C3 & A & B & D {
+:"addc." A, B, D is top=0 & (opcode=0x1C3 | opcode=0x183) & A & B & D {
 	local t:4 = zext(A) + zext(B) + zext(CF);
 	D = t:2;
 	CF = (t > 0xFFFF);
 }
-:sub A, B, D is top=0 & opcode=0x1D0 & A & B & D {
+:sub A, B, D is top=0 & (opcode=0x1D0 | opcode=0x190) & A & B & D {
 	D = A - B;
 }
-:subc A, B, D is top=0 & opcode=0x1D1 & A & B & D {
+:subc A, B, D is top=0 & (opcode=0x1D1 | opcode=0x191) & A & B & D {
 	local t:4 = zext(A) - zext(B) - zext(CF);
 	D = t:2;
 }
-:"sub." A, B, D is top=0 & opcode=0x1D2 & A & B & D {
+:"sub." A, B, D is top=0 & (opcode=0x1D2 | opcode=0x192) & A & B & D {
 	local x:2 = A;
 	local y:2 = B;
 	D = x - y;
 	CF = (x < y);
 }
-:"subc." A, B, D is top=0 & opcode=0x1D3 & A & B & D {
+:"subc." A, B, D is top=0 & (opcode=0x1D3 | opcode=0x193) & A & B & D {
 	local x:4 = zext(A);
 	local y:4 = zext(B) + zext(CF);
 	D = x:2 - y:2;
