@@ -4,7 +4,7 @@
 
    <language processor="Broadcomm D11"
             endian="little"
-            size="32"
+            size="16"
             variant="default"
             version="1.0"
             slafile="d11.sla"

@@ -2,8 +2,7 @@
 
 <processor_spec>
   <programcounter register="PC"/>
- 
   <default_symbols>
-    <symbol name="entry" address="ram:0000" entry="true"/>
+    <symbol name="entry" address="code:0000" entry="true"/>
   </default_symbols>
 </processor_spec>

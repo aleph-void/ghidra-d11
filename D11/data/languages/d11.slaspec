@@ -1,482 +1,452 @@
+# Specification for the Broadcom D11 microcode engine (the 802.11 MAC "PSM" of Broadcom Wi-Fi chips),
+# core revisions >= 15: 64-bit instructions with three 13-bit operands (b43 "architecture 15").
+#
+# Sources: the instruction format as documented at bcm-v4.sipsolutions.net/802.11/Microcode and
+# the b43-tools assembler/disassembler used as a black box; see GHIDRA-RARE.md.
+#
+# Address spaces:
+#   code   instructions, addressed by instruction number (jump targets are instruction numbers)
+#   shm    the shared memory, 16-bit words addressed by word number
+#   callstack  the hardware stack of CALLS/RETS (return instruction numbers)
 
 define endian=little;
-define alignment=4;
+define alignment=8;
 
-define space ram     type=ram_space      size=2 wordsize=1 default;
-define space register type=register_space size=2;
-define space ctrl_register type=ram_space size=2;
-
-define token inst (64)
-    top = (51, 63)
-    
-    opcode = (39, 50)#
-    opcode_top = (47, 50)
-    
-    opcode_mid = (43, 46)
-    opcode_low = (39, 42)
-    opcode_lomid = (39,46)
-
-    
-    op0 = (26, 38)
-    op0_ty = (37, 38)
-    op0_imm_mask = (36, 36)
-    op0_0_10 = (26, 36)
-    op0_10_12 = (36, 38)
-    op0_7_12 = (33, 38)
-    op0_12 = (38, 38)
-    op0_reg = (26, 32)
-    op0_spr = (26, 35)
-    op0_0_6 = (26, 32)
-    op0_refreg = (27, 29)
-    
-    
-    op1 = (13, 25)
-    op1_ty = (24, 25)
-    op1_imm_mask = (23, 23)
-    op1_0_10 = (13, 23)
-    op1_10_12 = (23, 25)
-    op1_7_12 = (20, 25)
-	op1_12 = (25, 25)    
-    op1_reg = (13, 19)
-    op1_spr = (13, 22)
-    op1_0_6 = (13, 21)
-    op1_refreg = (22, 24)
-    
-    op2 = (0, 12)
-    op2_ty = (11, 12)
-    op2_imm_mask = (10, 10)
-    op2_0_10 = (0, 10)
-    op2_10_12 = (10,12)
-    op2_7_12 = (7, 12)
-    op2_12 = (12, 12)
-    op2_reg = (0, 6)
-    op2_spr = (0, 9)
-    op2_0_6 = (0, 6)
-    op2_refreg = (7, 9)
-   
-
-    rest = (0, 63)
-;
+define space code      type=ram_space      size=2 wordsize=8 default;
+define space shm       type=ram_space      size=2 wordsize=2;
+define space callstack type=ram_space      size=1 wordsize=2;
+define space register  type=register_space size=2;
 
 @include "spr.sinc"
 
+define token inst (64)
+	top = (51, 63)
+	opcode = (39, 50)
+	opcode_top = (47, 50)
+	opcode_mid = (43, 46)
+	opcode_low = (39, 42)
+	opcode_lomid = (39, 46)
 
+	op0_all = (26, 38)
+	op0_t3 = (36, 38)
+	op0_t6 = (33, 38)
+	op0_b12 = (38, 38)
+	op0_ty = (37, 38)
+	op0_imm = (26, 36) signed
+	op0_mem = (26, 37)
+	op0_spr = (26, 35)
+	op0_reg = (26, 32)
+	op0_off = (26, 32)
+	op0_ref = (33, 35)
 
-op0_std:"maskim" is op0 & op0_ty=0b11 & op0_imm_mask!=0 { export A; }
+	op1_all = (13, 25)
+	op1_t3 = (23, 25)
+	op1_t6 = (20, 25)
+	op1_b12 = (25, 25)
+	op1_ty = (24, 25)
+	op1_imm = (13, 23) signed
+	op1_mem = (13, 24)
+	op1_spr = (13, 22)
+	op1_reg = (13, 19)
+	op1_off = (13, 19)
+	op1_ref = (20, 22)
 
+	op2_all = (0, 12)
+	op2_t3 = (10, 12)
+	op2_t6 = (7, 12)
+	op2_b12 = (12, 12)
+	op2_ty = (11, 12)
+	op2_imm = (0, 10) signed
+	op2_mem = (0, 11)
+	op2_spr = (0, 9)
+	op2_reg = (0, 6)
+	op2_off = (0, 6)
+	op2_ref = (7, 9)
+;
 
-op0_std:op0_0_10 is op0_0_10 & op0_ty=0b11 & op0_imm_mask=0 { 
-    local v:2 = op0_0_10;
-    export v;
+attach variables [ op0_reg op1_reg op2_reg ] [ r0 r1 r2 r3 r4 r5 r6 r7 r8 r9 r10 r11 r12 r13 r14 r15 r16 r17 r18 r19 r20 r21 r22 r23 r24 r25 r26 r27 r28 r29 r30 r31 r32 r33 r34 r35 r36 r37 r38 r39 r40 r41 r42 r43 r44 r45 r46 r47 r48 r49 r50 r51 r52 r53 r54 r55 r56 r57 r58 r59 r60 r61 r62 r63 r64 r65 r66 r67 r68 r69 r70 r71 r72 r73 r74 r75 r76 r77 r78 r79 r80 r81 r82 r83 r84 r85 r86 r87 r88 r89 r90 r91 r92 r93 r94 r95 r96 r97 r98 r99 r100 r101 r102 r103 r104 r105 r106 r107 r108 r109 r110 r111 r112 r113 r114 r115 r116 r117 r118 r119 r120 r121 r122 r123 r124 r125 r126 r127 ];
+attach variables [ op0_spr op1_spr op2_spr ] [ spr000 spr001 spr002 spr003 spr004 spr005 spr006 spr007 spr008 spr009 spr00a spr00b spr00c spr00d spr00e spr00f spr010 spr011 spr012 spr013 spr014 spr015 spr016 spr017 spr018 spr019 spr01a spr01b spr01c spr01d spr01e spr01f spr020 spr021 spr022 spr023 spr024 spr025 spr026 spr027 spr028 spr029 spr02a spr02b spr02c spr02d spr02e spr02f spr030 spr031 spr032 spr033 spr034 spr035 spr036 spr037 spr038 spr039 spr03a spr03b spr03c spr03d spr03e spr03f spr040 spr041 spr042 spr043 spr044 spr045 spr046 spr047 spr048 spr049 spr04a spr04b spr04c spr04d spr04e spr04f spr050 spr051 spr052 spr053 spr054 spr055 spr056 spr057 spr058 spr059 spr05a spr05b spr05c spr05d spr05e spr05f spr060 spr061 spr062 spr063 spr064 spr065 spr066 spr067 spr068 spr069 spr06a spr06b spr06c spr06d spr06e spr06f spr070 spr071 spr072 spr073 spr074 spr075 spr076 spr077 spr078 spr079 spr07a spr07b spr07c spr07d spr07e spr07f spr080 spr081 spr082 spr083 spr084 spr085 spr086 spr087 spr088 spr089 spr08a spr08b spr08c spr08d spr08e spr08f spr090 spr091 spr092 spr093 spr094 spr095 spr096 spr097 spr098 spr099 spr09a spr09b spr09c spr09d spr09e spr09f spr0a0 spr0a1 spr0a2 spr0a3 spr0a4 spr0a5 spr0a6 spr0a7 spr0a8 spr0a9 spr0aa spr0ab spr0ac spr0ad spr0ae spr0af spr0b0 spr0b1 spr0b2 spr0b3 spr0b4 spr0b5 spr0b6 spr0b7 spr0b8 spr0b9 spr0ba spr0bb spr0bc spr0bd spr0be spr0bf off0 off1 off2 off3 off4 off5 off6 spr0c7 spr0c8 spr0c9 spr0ca spr0cb spr0cc spr0cd spr0ce spr0cf spr0d0 spr0d1 spr0d2 spr0d3 spr0d4 spr0d5 spr0d6 spr0d7 spr0d8 spr0d9 spr0da spr0db spr0dc spr0dd spr0de spr0df spr0e0 spr0e1 spr0e2 spr0e3 spr0e4 spr0e5 spr0e6 spr0e7 spr0e8 spr0e9 spr0ea spr0eb spr0ec spr0ed spr0ee spr0ef spr0f0 spr0f1 spr0f2 spr0f3 spr0f4 spr0f5 spr0f6 spr0f7 spr0f8 spr0f9 spr0fa spr0fb spr0fc spr0fd spr0fe spr0ff spr100 spr101 spr102 spr103 spr104 spr105 spr106 spr107 spr108 spr109 spr10a spr10b spr10c spr10d spr10e spr10f spr110 spr111 spr112 spr113 spr114 spr115 spr116 spr117 spr118 spr119 spr11a spr11b spr11c spr11d spr11e spr11f spr120 spr121 spr122 spr123 spr124 spr125 spr126 spr127 spr128 spr129 spr12a spr12b spr12c spr12d spr12e spr12f spr130 spr131 spr132 spr133 spr134 spr135 spr136 spr137 spr138 spr139 spr13a spr13b spr13c spr13d spr13e spr13f spr140 spr141 spr142 spr143 spr144 spr145 spr146 spr147 spr148 spr149 spr14a spr14b spr14c spr14d spr14e spr14f spr150 spr151 spr152 spr153 spr154 spr155 spr156 spr157 spr158 spr159 spr15a spr15b spr15c spr15d spr15e spr15f spr160 spr161 spr162 spr163 spr164 spr165 spr166 spr167 spr168 spr169 spr16a spr16b spr16c spr16d spr16e spr16f spr170 spr171 spr172 spr173 spr174 spr175 spr176 spr177 spr178 spr179 spr17a spr17b spr17c spr17d spr17e spr17f spr180 spr181 spr182 spr183 spr184 spr185 spr186 spr187 spr188 spr189 spr18a spr18b spr18c spr18d spr18e spr18f spr190 spr191 spr192 spr193 spr194 spr195 spr196 spr197 spr198 spr199 spr19a spr19b spr19c spr19d spr19e spr19f spr1a0 spr1a1 spr1a2 spr1a3 spr1a4 spr1a5 spr1a6 spr1a7 spr1a8 spr1a9 spr1aa spr1ab spr1ac spr1ad spr1ae spr1af spr1b0 spr1b1 spr1b2 spr1b3 spr1b4 spr1b5 spr1b6 spr1b7 spr1b8 spr1b9 spr1ba spr1bb spr1bc spr1bd spr1be spr1bf spr1c0 spr1c1 spr1c2 spr1c3 spr1c4 spr1c5 spr1c6 spr1c7 spr1c8 spr1c9 spr1ca spr1cb spr1cc spr1cd spr1ce spr1cf spr1d0 spr1d1 spr1d2 spr1d3 spr1d4 spr1d5 spr1d6 spr1d7 spr1d8 spr1d9 spr1da spr1db spr1dc spr1dd spr1de spr1df spr1e0 spr1e1 spr1e2 spr1e3 spr1e4 spr1e5 spr1e6 spr1e7 spr1e8 spr1e9 spr1ea spr1eb spr1ec spr1ed spr1ee spr1ef spr1f0 spr1f1 spr1f2 spr1f3 spr1f4 spr1f5 spr1f6 spr1f7 spr1f8 spr1f9 spr1fa spr1fb spr1fc spr1fd spr1fe spr1ff spr200 spr201 spr202 spr203 spr204 spr205 spr206 spr207 spr208 spr209 spr20a spr20b spr20c spr20d spr20e spr20f spr210 spr211 spr212 spr213 spr214 spr215 spr216 spr217 spr218 spr219 spr21a spr21b spr21c spr21d spr21e spr21f spr220 spr221 spr222 spr223 spr224 spr225 spr226 spr227 spr228 spr229 spr22a spr22b spr22c spr22d spr22e spr22f spr230 spr231 spr232 spr233 spr234 spr235 spr236 spr237 spr238 spr239 spr23a spr23b spr23c spr23d spr23e spr23f spr240 spr241 spr242 spr243 spr244 spr245 spr246 spr247 spr248 spr249 spr24a spr24b spr24c spr24d spr24e spr24f spr250 spr251 spr252 spr253 spr254 spr255 spr256 spr257 spr258 spr259 spr25a spr25b spr25c spr25d spr25e spr25f spr260 spr261 spr262 spr263 spr264 spr265 spr266 spr267 spr268 spr269 spr26a spr26b spr26c spr26d spr26e spr26f spr270 spr271 spr272 spr273 spr274 spr275 spr276 spr277 spr278 spr279 spr27a spr27b spr27c spr27d spr27e spr27f spr280 spr281 spr282 spr283 spr284 spr285 spr286 spr287 spr288 spr289 spr28a spr28b spr28c spr28d spr28e spr28f spr290 spr291 spr292 spr293 spr294 spr295 spr296 spr297 spr298 spr299 spr29a spr29b spr29c spr29d spr29e spr29f spr2a0 spr2a1 spr2a2 spr2a3 spr2a4 spr2a5 spr2a6 spr2a7 spr2a8 spr2a9 spr2aa spr2ab spr2ac spr2ad spr2ae spr2af spr2b0 spr2b1 spr2b2 spr2b3 spr2b4 spr2b5 spr2b6 spr2b7 spr2b8 spr2b9 spr2ba spr2bb spr2bc spr2bd spr2be spr2bf spr2c0 spr2c1 spr2c2 spr2c3 spr2c4 spr2c5 spr2c6 spr2c7 spr2c8 spr2c9 spr2ca spr2cb spr2cc spr2cd spr2ce spr2cf spr2d0 spr2d1 spr2d2 spr2d3 spr2d4 spr2d5 spr2d6 spr2d7 spr2d8 spr2d9 spr2da spr2db spr2dc spr2dd spr2de spr2df spr2e0 spr2e1 spr2e2 spr2e3 spr2e4 spr2e5 spr2e6 spr2e7 spr2e8 spr2e9 spr2ea spr2eb spr2ec spr2ed spr2ee spr2ef spr2f0 spr2f1 spr2f2 spr2f3 spr2f4 spr2f5 spr2f6 spr2f7 spr2f8 spr2f9 spr2fa spr2fb spr2fc spr2fd spr2fe spr2ff spr300 spr301 spr302 spr303 spr304 spr305 spr306 spr307 spr308 spr309 spr30a spr30b spr30c spr30d spr30e spr30f spr310 spr311 spr312 spr313 spr314 spr315 spr316 spr317 spr318 spr319 spr31a spr31b spr31c spr31d spr31e spr31f spr320 spr321 spr322 spr323 spr324 spr325 spr326 spr327 spr328 spr329 spr32a spr32b spr32c spr32d spr32e spr32f spr330 spr331 spr332 spr333 spr334 spr335 spr336 spr337 spr338 spr339 spr33a spr33b spr33c spr33d spr33e spr33f spr340 spr341 spr342 spr343 spr344 spr345 spr346 spr347 spr348 spr349 spr34a spr34b spr34c spr34d spr34e spr34f spr350 spr351 spr352 spr353 spr354 spr355 spr356 spr357 spr358 spr359 spr35a spr35b spr35c spr35d spr35e spr35f spr360 spr361 spr362 spr363 spr364 spr365 spr366 spr367 spr368 spr369 spr36a spr36b spr36c spr36d spr36e spr36f spr370 spr371 spr372 spr373 spr374 spr375 spr376 spr377 spr378 spr379 spr37a spr37b spr37c spr37d spr37e spr37f spr380 spr381 spr382 spr383 spr384 spr385 spr386 spr387 spr388 spr389 spr38a spr38b spr38c spr38d spr38e spr38f spr390 spr391 spr392 spr393 spr394 spr395 spr396 spr397 spr398 spr399 spr39a spr39b spr39c spr39d spr39e spr39f spr3a0 spr3a1 spr3a2 spr3a3 spr3a4 spr3a5 spr3a6 spr3a7 spr3a8 spr3a9 spr3aa spr3ab spr3ac spr3ad spr3ae spr3af spr3b0 spr3b1 spr3b2 spr3b3 spr3b4 spr3b5 spr3b6 spr3b7 spr3b8 spr3b9 spr3ba spr3bb spr3bc spr3bd spr3be spr3bf spr3c0 spr3c1 spr3c2 spr3c3 spr3c4 spr3c5 spr3c6 spr3c7 spr3c8 spr3c9 spr3ca spr3cb spr3cc spr3cd spr3ce spr3cf spr3d0 spr3d1 spr3d2 spr3d3 spr3d4 spr3d5 spr3d6 spr3d7 spr3d8 spr3d9 spr3da spr3db spr3dc spr3dd spr3de spr3df spr3e0 spr3e1 spr3e2 spr3e3 spr3e4 spr3e5 spr3e6 spr3e7 spr3e8 spr3e9 spr3ea spr3eb spr3ec spr3ed spr3ee spr3ef spr3f0 spr3f1 spr3f2 spr3f3 spr3f4 spr3f5 spr3f6 spr3f7 spr3f8 spr3f9 spr3fa spr3fb spr3fc spr3fd spr3fe spr3ff ];
+attach variables [ op0_ref op1_ref op2_ref ] [ off0 off1 off2 off3 off4 off5 off6 _ ];
+
+# operand A (op0): 0mmmm mmmmmmmm = shm[m]; 100 spr; 101 rrr ooooooo = shm[o + off_r];
+# 101111 rrrrrrr = register; 11 iiiiiiiiiii = signed 11-bit immediate
+A: op0_imm is op0_ty=0b11 & op0_imm {
+	local v:2 = op0_imm;
+	export v;
 }
-op0_std:op0_spr is op0_10_12=0b100 & op0_spr { export *[ctrl_register]:2 op0_spr; }
-op0_std:op0_reg is op0_7_12=0b101111 & op0_reg { export op0_reg;}
-op0_std:"["op0"]" is op0_12=0 & op0 { export *[ram]:2 op0;}
-op0_std:"["op0_0_6","op0_refreg"]" is op0_10_12=0b101 & op0_0_6 & op0_refreg { 
-    local tmp:2 = op0_refreg + op0_0_6;
-    export *[ram]:2 tmp;
- }
-
-
-
-op1_std:op1_0_10 is op1_0_10 & op1_ty=0b11 & op1_imm_mask=0 {
-    local v:2 = op1_0_10;
-    export v;
+A: op0_spr is op0_t3=0b100 & op0_spr { export op0_spr; }
+A: op0_reg is op0_t6=0b101111 & op0_reg { export op0_reg; }
+A: "["op0_off","op0_ref"]" is op0_t3=0b101 & op0_t6!=0b101111 & op0_off & op0_ref {
+	local o:2 = op0_off;
+	local addr:2 = o + op0_ref;
+	export *[shm]:2 addr;
 }
-op1_std:op1_spr is op1_10_12=0b100 & op1_spr { export *[ctrl_register]:2 op1_spr; }
-op1_std:op1_reg is op1_7_12=0b101111 & op1_reg { export op1_reg; }
-op1_std:"["op1"]" is op1_12=0 & op1 { export *[ram]:2 op1;}
-op1_std:"["op1_0_6","op1_refreg"]" is op1_10_12=0b101 & op1_0_6 & op1_refreg { 
-    local tmp:2 = op1_refreg + op1_0_6;
-    export *[ram]:2 tmp;
- }
-
-
-
-#op2
-op2_std:op2_0_10 is op2_0_10 & op2_ty=0b11 & op2_imm_mask=0 {
-    local v:2= op2_0_10;
-    export v;
-}
-op2_std:op2_spr is op2_10_12=0b100 & op2_spr { export *[ctrl_register]:2  op2_spr; }
-op2_std:op2_reg is op2_7_12=0b101111 & op2_reg { export op2_reg; }
-op2_std:"["op2"]" is op2_12=0 & op2 { export *[ram]:2 op2;}
-op2_std:"["op2_0_6","op2_refreg"]" is op2_10_12=0b101 & op2_0_6 & op2_refreg { 
-    local tmp:2 = op2_refreg + op2_0_6;
-    export *[ram]:2 tmp;
- }
-
-
-:"srx" opcode_mid"," opcode_low"," op0_std"," op1_std"," op2_std is rest & top=0 & opcode_top=2  & opcode_mid & opcode_low & op0_std & op1_std & op2_std {
-    local tmp0:2 = op0_std;
-    local tmp1:2 = op1_std;
-    local mask1:4 = (1 << (opcode_low +1)) - 1;
-    local mask:2 = mask1:2;
-
-    local op0_u32:4 = zext(tmp0);
-    local op1_u32:4 = zext(tmp1);
-    local tmp:4 = (op1_u32 << 16) | op0_u32;
-    local res1:4 = tmp >> opcode_mid;
-    local result:2 = (res1:2) & mask;
-    op2_std = result;
-}
-
-:"orx" opcode_mid"," opcode_low"," op0_std"," op1_std"," op2_std is rest & top=0 & opcode_top=3  & opcode_mid & opcode_low & op0_std & op1_std & op2_std {
-
-    local tmp0:2 = op0_std;
-    local tmp1:2 = op1_std;
-    local mask:2 = (1 << (opcode_low +1)) - 1;
-    local mask_rot:2 = (mask << opcode_mid)|(mask >> (16-opcode_mid));
-    
-    local op0_rot:2 = (tmp0 << opcode_mid)|(tmp0 >> (16-opcode_mid));
-    local result:2 = (op0_rot & mask_rot) | (tmp1 & (~mask_rot));
-    op2_std = result;
+A: "["op0_mem"]" is op0_b12=0 & op0_mem {
+	export *[shm]:2 op0_mem;
 }
 
-:"jzx" opcode_mid"," opcode_low"," op0_std"," op1_std"," tgt is rest & top=0 & opcode_top=4 & opcode_mid & opcode_low & op0_std & op1_std & op2 [tgt = op2*8; ]{
-    local tmp0:4 = zext(op0_std);
-    local tmp1:4 = zext(op1_std);
-
-    local tmp:4 = ((tmp0 << 16) | (tmp1)) >> opcode_mid;
-    local mask:4 = (1 << (opcode_low +1)) - 1;
-    local cmp:4 = tmp & mask;
-    if(cmp != 0) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-	
+# operand B (op1): 0mmmm mmmmmmmm = shm[m]; 100 spr; 101 rrr ooooooo = shm[o + off_r];
+# 101111 rrrrrrr = register; 11 iiiiiiiiiii = signed 11-bit immediate
+B: op1_imm is op1_ty=0b11 & op1_imm {
+	local v:2 = op1_imm;
+	export v;
+}
+B: op1_spr is op1_t3=0b100 & op1_spr { export op1_spr; }
+B: op1_reg is op1_t6=0b101111 & op1_reg { export op1_reg; }
+B: "["op1_off","op1_ref"]" is op1_t3=0b101 & op1_t6!=0b101111 & op1_off & op1_ref {
+	local o:2 = op1_off;
+	local addr:2 = o + op1_ref;
+	export *[shm]:2 addr;
+}
+B: "["op1_mem"]" is op1_b12=0 & op1_mem {
+	export *[shm]:2 op1_mem;
 }
 
-:"jnzx" opcode_mid"," opcode_low"," op0_std"," op1_std"," tgt is rest & top=0 & opcode_top=5 & opcode_mid & opcode_low & op0_std & op1_std & op2 [tgt = op2*8; ] {
-    local tmp0:4 = zext(op0_std);
-    local tmp1:4 = zext(op1_std);
-    local tmp:4 = ((tmp0 << 16) | (tmp1)) >> opcode_mid;
-    local mask:4 = (1 << (opcode_low +1)) - 1;
-    local cmp:4 = tmp & mask;
-    if(cmp == 0) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
+# operand D (op2): 0mmmm mmmmmmmm = shm[m]; 100 spr; 101 rrr ooooooo = shm[o + off_r];
+# 101111 rrrrrrr = register; 11 iiiiiiiiiii = signed 11-bit immediate
+D: op2_imm is op2_ty=0b11 & op2_imm {
+	local v:2 = op2_imm;
+	export v;
+}
+D: op2_spr is op2_t3=0b100 & op2_spr { export op2_spr; }
+D: op2_reg is op2_t6=0b101111 & op2_reg { export op2_reg; }
+D: "["op2_off","op2_ref"]" is op2_t3=0b101 & op2_t6!=0b101111 & op2_off & op2_ref {
+	local o:2 = op2_off;
+	local addr:2 = o + op2_ref;
+	export *[shm]:2 addr;
+}
+D: "["op2_mem"]" is op2_b12=0 & op2_mem {
+	export *[shm]:2 op2_mem;
 }
 
-define pcodeop external_cond;
-:"jnext" opcode_mid"," opcode_low"," op0_std"," op1_std"," tgt is rest & top=0 & opcode_top=6 & opcode_mid & opcode_low & op0_std & op1_std & opcode_lomid & op2 [ tgt = op2*8; ]   {
-    local tmp0:4 = opcode_lomid;
-    local tmp1:4 = external_cond(tmp0);
-    if(tmp1 != 0) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
+# Jump target: an instruction number
+T: op2_all is op2_all {
+	export *[code]:2 op2_all;
 }
 
-
-:"jext" opcode_lomid"," tgt is rest & top=0 & opcode_top=7 & opcode_lomid & op2 & op2_std [tgt = op2*8; ] {  
-    local tmp0:4 = opcode_lomid;
-    local tmp1:4 = external_cond(tmp0);
-    if(tmp1 == 0) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
+# The return address (instruction number of the next instruction) as a constant
+nextAddr: n is epsilon [ n = inst_next; ] {
+	export *[const]:2 n;
 }
 
-:"mul" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x101 & op0_std & op1_std & op2_std {
-    local tmp0:4 = zext(op0_std);
-    local tmp1:4 = zext(op1_std);
-    local res:4 = (tmp0 * tmp1) >> 16;
-    
-    op2_std = res:2;
-    #TODO: IHR
-}
-
-
-:"add" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1C0 | opcode=0x180) & op0_std & op1_std & op2_std {
-    op2_std = op0_std + op1_std;
-}
-
-:"adds" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1C2 | opcode=0x182) & op0_std & op1_std & op2_std {
-    local tmp0:4 = zext(op0_std);
-    local tmp1:4 = zext(op1_std);
-
-    local tmp:4 = tmp0 + tmp1;
-    local carry:1 = tmp > 0xFFFF;
-    flags = zext(carry);
-    op2_std = tmp:2;
-}
-
-:"addc" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1C1 | opcode=0x181) & op0_std & op1_std & op2_std {
-    local tmp0:4 = zext(op0_std);
-    local tmp1:4 = zext(op1_std);
-
-    local tmp:4 = tmp0 + tmp1;
-    if(flags == 0) goto <next>;
-    tmp = tmp + 1;
-    <next>
-
-    op2_std = tmp:2;
-}
-
-:"addcs" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1C3 | opcode=0x183) & op0_std & op1_std & op2_std {
-    local tmp0:4 = zext(op0_std);
-    local tmp1:4 = zext(op1_std);
-
-    local tmp:4 = tmp0 + tmp1;
-    if(flags == 0) goto <next>;
-    tmp = tmp + 1;
-    <next>
-
-    local carry:1 = tmp > 0xFFFF;
-    flags = zext(carry);
-    op2_std = tmp:2;
-}
-
-:"sub" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1D0 | opcode=0x190) & op0_std & op1_std & op2_std {
-    op2_std = op0_std - op1_std;
-}
-
-
-:"subs" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1D2 | opcode=0x192) & op0_std & op1_std & op2_std {
-    local tmp0:4 = zext(op0_std);
-    local tmp1:4 = zext(op1_std);
-
-    local tmp:4 = tmp0 - tmp1;
-    local carry:1 = tmp0 s< tmp1;
-    flags = zext(carry);
-    op2_std = tmp:2;
-}
-
-:"subc" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1D1 | opcode=0x191) & op0_std & op1_std & op2_std {
-    local tmp0:4 = zext(op0_std);
-    local tmp1:4 = zext(op1_std);
-
-    local tmp:4 = tmp0 - tmp1;
-    if(flags == 0) goto <next>;
-    tmp = tmp - 1;
-    <next>
-
-    op2_std = tmp:2;
-}
-
-:"subcs" op0_std"," op1_std"," op2_std is rest & top=0 & (opcode=0x1D3 | opcode=0x193) & op0_std & op1_std & op2_std  {
-    local tmp0:4 = zext(op0_std);
-    local tmp1:4 = zext(op1_std);
-
-    local tmp:4 = tmp0 - tmp1;
-    if(flags == 0) goto <next>;
-    tmp = tmp - 1;
-    <next>
-
-    local carry:1 = tmp0 s< tmp1;
-    flags = zext(carry);
-    op2_std = tmp:2;
-}
-
-:"sra" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x130 & op0_std & op1_std & op2_std {
-    op2_std = op0_std s>> op1_std;
-}
-
-:"or" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x160 & op0_std & op1_std & op2_std {
-    op2_std = op0_std | op1_std;
-}
-
-:"and" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x140 & op0_std & op1_std & op2_std {
-    op2_std = op0_std & op1_std;
-}
-
-:"xor" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x170 & op0_std & op1_std & op2_std {
-    op2_std = op0_std ^ op1_std;
-}
-
-:"sr" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x120 & op0_std & op1_std & op2_std {
-    op2_std = op0_std >> op1_std;
-}
-
-:"sl" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x110 & op0_std & op1_std & op2_std {
-    op2_std = op0_std << op1_std;
-}
-
-:"rl" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x1A0 & op0_std & op1_std & op2_std {
-    op2_std = (op0_std << op1_std) | (op0_std >> (16 - op1_std));
-}
-
-:"rr" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x1B0 & op0_std & op1_std & op2_std {
-    op2_std = (op0_std >> op1_std) | (op0_std << (16 - op1_std));
-}
-
-:"nand" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x150 & op0_std & op1_std & op2_std {
-    op2_std = ~(op0_std & op1_std);
-}
-
-:"jand" op0_std"," op1_std"," op2"," tgt is rest & top=0 & opcode=0x040 & op0_std & op1_std & op2 [ tgt=op2*8;] {
-    local tmp:2 = op0_std & op1_std;
-    if(tmp == 0) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-:"jnand" op0_std"," op1_std"," op2"," tgt is rest & top=0 & opcode=0x041 & op0_std & op1_std & op2 [tgt=op2*8;] {
-    local tmp:2 = op0_std & op1_std;
-    if(tmp != 0) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-:"js" op0_std"," op1_std"," op2"," tgt is rest & top=0 & opcode=0x050 & op0_std & op1_std & op2 [tgt=op2*8;] {
-    local tmp:2 = op0_std & op1_std;
-    if(tmp != op0_std) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-:"jns" op0_std"," op1_std"," op2"," tgt is rest & top=0 & opcode=0x051 & op0_std & op1_std & op2 [tgt=op2*8;] {
-    local tmp:2 = op0_std & op1_std;
-    if(tmp == op0_std) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-:"jboh" op0_std"," op1_std"," op2"," tgt is rest & top=0 & opcode=0x070 & op0_std & op1_std & op2 [tgt=op2*8;] {
-    if(op0_std != op1_std) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-:"jnboh" op0_std"," op1_std"," op2"," tgt is rest & top=0 & opcode=0x071 & op0_std & op1_std & op2 [tgt=op2*8;] {
-    if(op0_std == op1_std) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-:"je" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D0 | opcode=0x090) & op0_std & op1_std & op2 [ tgt=op2*8;] {
-    if(op0_std != op1_std) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-:"jne" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D1 | opcode=0x091) & op0_std & op1_std & op2 [ tgt=op2*8;] {
-    if(op0_std == op1_std) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-
-:"jls" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D2 | opcode=0x092) & op0_std & op1_std & op2 [tgt=op2*8;] {
-    if(op0_std s>= op1_std) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-:"jges" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D3 | opcode=0x093) & op0_std & op1_std & op2 [tgt=op2*8;] {
-    if(op0_std s< op1_std) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-
-
-:"jgs" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D4 | opcode=0x094) & op0_std & op1_std & op2 [ tgt=op2*8;] {
-    if(op0_std s<= op1_std) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-:"jles" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D5 | opcode=0x095) & op0_std & op1_std & op2 [ tgt=op2*8;] {
-    if(op0_std s> op1_std) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-
-:"jdn" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D6 | opcode=0x096) & op0_std & op1_std & op2 [tgt=op2*8;] {
-    local tmp:2 = op0_std - op1_std;
-    if(tmp s>= 0) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-:"jdpz" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D7 | opcode=0x097) & op0_std & op1_std & op2 [tgt=op2*8;] {
-    local tmp:2 = op0_std - op1_std;
-    if(tmp s< 0) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-:"jdp" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D8 | opcode=0x098) & op0_std & op1_std & op2 [tgt=op2*8;] {
-    local tmp:2 = op0_std - op1_std;
-    if(tmp s<= 0) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-:"jdnz" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0D9 | opcode=0x099) & op0_std & op1_std & op2 [tgt=op2*8;] {
-    local tmp:2 = op0_std - op1_std;
-    if(tmp s> 0) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-:"jl" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0DA | opcode=0x09A) & op0_std & op1_std & op2 [ tgt=op2*8;]{
-    if(op0_std >= op1_std) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-:"jge" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0DB | opcode=0x09B) & op0_std & op1_std & op2 [ tgt=op2*8;] { 
-    if(op0_std < op1_std) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-:"jg" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0DC | opcode=0x09C) & op0_std & op1_std & op2 [ tgt=op2*8;] { 
-    if(op0_std <= op1_std) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-
-:"jle" op0_std"," op1_std"," op2"," tgt is rest & top=0 & (opcode=0x0DD | opcode=0x09D) & op0_std & op1_std & op2 [ tgt=op2*8;] { 
-    if(op0_std > op1_std) goto inst_next;
-    local dest:2 = tgt;
-    goto [dest];
-}
-
-
-
-
-:"calls" tgt is rest & top=0 & opcode=0x004 & op2 [tgt = op2*8;] {
-    local stack_slot:2 = call_stack + ihr_sub_stack_status*2;
-    *[ram]:2 stack_slot = inst_next;
-    ihr_sub_stack_status = ihr_sub_stack_status + 1;
-    
-    local dest:2 = tgt;
-    call [dest];
-}
-
-:"rets" is rest & top=0 & opcode=0x005 {
-    ihr_sub_stack_status = ihr_sub_stack_status - 1;
-    local stack_slot:2 = call_stack + ihr_sub_stack_status*2;
-    local dest:2 = *[ram]:2 stack_slot;
-    return [dest];
-}
-
-define pcodeop sbox_forward;
-define pcodeop sbox_backward;
-
-:"tkip" op0_std"," op1_std"," op2_std is rest & top=0 & opcode=0x1E0 & op0_std & op1_std & op2_std {
-    local op:2 = op0_std; 
-    local tmp:2 = op1_std & 1;
-    local ret:2 = 0;
-    if(tmp == 0) goto <noshift>;
-        op = op >> 8;
-    <noshift>
-    tmp = op1_std & 2;
-    if(tmp == 0) goto <nofw>;
-        ret = sbox_forward(op);
-        goto <end>;
-    <nofw>
-        ret = sbox_backward(op);
-        goto <end>;
-    <end>
-        op2_std = ret;
-}
-    
-
-# nop
+# Hardware operations and state
+define pcodeop external_condition;
 define pcodeop nap;
-:"nap" is rest & top=0 & opcode=0x001 { nap(); }
-:"nap2" is rest & top=0 & opcode=0x002 { nap(); }
+define pcodeop tkip_sbox;
+
+macro push(v) {
+	*[callstack]:2 SP = v;
+	SP = SP + 1;
+}
+
+macro pop(v) {
+	SP = SP - 1;
+	v = *[callstack]:2 SP;
+}
+
+# ---- arithmetic. 1cL add, 1dL sub: L bit 0 = use the carry, bit 1 = set the carry
+
+macro addCarry(a, b, d, useC, setC) {
+	local c:4 = 0;
+	if (useC == 0) goto <nocarry>;
+	c = zext(CF);
+<nocarry>
+	local t:4 = zext(a) + zext(b) + c;
+	d = t:2;
+	if (setC == 0) goto <done>;
+	CF = (t > 0xFFFF);
+<done>
+}
+
+:add A, B, D is top=0 & opcode=0x1C0 & A & B & D {
+	D = A + B;
+}
+:addc A, B, D is top=0 & opcode=0x1C1 & A & B & D {
+	local t:4 = zext(A) + zext(B) + zext(CF);
+	D = t:2;
+}
+:"add." A, B, D is top=0 & opcode=0x1C2 & A & B & D {
+	local t:4 = zext(A) + zext(B);
+	D = t:2;
+	CF = (t > 0xFFFF);
+}
+:"addc." A, B, D is top=0 & opcode=0x1C3 & A & B & D {
+	local t:4 = zext(A) + zext(B) + zext(CF);
+	D = t:2;
+	CF = (t > 0xFFFF);
+}
+:sub A, B, D is top=0 & opcode=0x1D0 & A & B & D {
+	D = A - B;
+}
+:subc A, B, D is top=0 & opcode=0x1D1 & A & B & D {
+	local t:4 = zext(A) - zext(B) - zext(CF);
+	D = t:2;
+}
+:"sub." A, B, D is top=0 & opcode=0x1D2 & A & B & D {
+	local x:2 = A;
+	local y:2 = B;
+	D = x - y;
+	CF = (x < y);
+}
+:"subc." A, B, D is top=0 & opcode=0x1D3 & A & B & D {
+	local x:4 = zext(A);
+	local y:4 = zext(B) + zext(CF);
+	D = x:2 - y:2;
+	CF = (x < y);
+}
+
+# rev 11+: the high half of the product goes to the destination, the low half to spr06d
+:mul A, B, D is top=0 & opcode=0x101 & A & B & D {
+	local t:4 = zext(A) * zext(B);
+	spr06d = t:2;
+	local hi:4 = t >> 16;
+	D = hi:2;
+}
+
+# ---- shifts and logic
+:sra A, B, D is top=0 & opcode=0x130 & A & B & D {
+	D = A s>> B;
+}
+:or A, B, D is top=0 & opcode=0x160 & A & B & D {
+	D = A | B;
+}
+:and A, B, D is top=0 & opcode=0x140 & A & B & D {
+	D = A & B;
+}
+:xor A, B, D is top=0 & opcode=0x170 & A & B & D {
+	D = A ^ B;
+}
+:sr A, B, D is top=0 & opcode=0x120 & A & B & D {
+	D = A >> B;
+}
+:sl A, B, D is top=0 & opcode=0x110 & A & B & D {
+	D = A << B;
+}
+:rl A, B, D is top=0 & opcode=0x1A0 & A & B & D {
+	local x:2 = A;
+	local n:2 = B;
+	D = (x << n) | (x >> (16 - n));
+}
+:rr A, B, D is top=0 & opcode=0x1B0 & A & B & D {
+	local x:2 = A;
+	local n:2 = B;
+	D = (x >> n) | (x << (16 - n));
+}
+:nand A, B, D is top=0 & opcode=0x150 & A & B & D {
+	D = A & ~B;
+}
+
+# srx 2MS: D = (((B << 16) | A) >> S) & ((1 << (M + 1)) - 1)
+:srx opcode_mid, opcode_low, A, B, D is top=0 & opcode_top=2 & opcode_mid & opcode_low & A & B & D {
+	local t:4 = (zext(B) << 16) | zext(A);
+	local mask:4 = (1 << (opcode_mid + 1)) - 1;
+	local r:4 = (t >> opcode_low) & mask;
+	D = r:2;
+}
+
+# orx 3MS: rotate by S, then merge the masked bits into B: mask = rotl(((1 << (M + 1)) - 1), S)
+:orx opcode_mid, opcode_low, A, B, D is top=0 & opcode_top=3 & opcode_mid & opcode_low & A & B & D {
+	local x:2 = A;
+	local y:2 = B;
+	local m:2 = (1 << (opcode_mid + 1)) - 1;
+	local s:2 = opcode_low;
+	local mask:2 = (m << s) | (m >> (16 - s));
+	local rot:2 = (x << s) | (x >> (16 - s));
+	D = (rot & mask) | (y & ~mask);
+}
+
+# TKIP S-box lookup: B bit 0 selects the high byte of A, bit 1 swaps the result's bytes
+:tkip A, B, D is top=0 & opcode=0x1E0 & A & B & D {
+	local x:2 = A;
+	local f:2 = B;
+	local idx:1 = x:1;
+	if ((f & 1) == 0) goto <low>;
+	local hi8:2 = x >> 8;
+	idx = hi8:1;
+<low>
+	local r:2 = tkip_sbox(idx);
+	if ((f & 2) == 0) goto <done>;
+	r = (r >> 8) | (r << 8);
+<done>
+	D = r;
+}
+
+# ---- jumps: if (condition) goto the instruction number in operand 3
+
+:jand A, B, T is top=0 & opcode=0x040 & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!((x & y) != 0)) goto inst_next;
+	goto T;
+}
+
+:jnand A, B, T is top=0 & opcode=0x041 & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!((x & y) == 0)) goto inst_next;
+	goto T;
+}
+
+:js A, B, T is top=0 & opcode=0x050 & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!((x & y) == x)) goto inst_next;
+	goto T;
+}
+
+:jns A, B, T is top=0 & opcode=0x051 & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!((x & y) != x)) goto inst_next;
+	goto T;
+}
+
+:je A, B, T is top=0 & (opcode=0x0D0 | opcode=0x090) & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!(x == y)) goto inst_next;
+	goto T;
+}
+
+:jne A, B, T is top=0 & (opcode=0x0D1 | opcode=0x091) & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!(x != y)) goto inst_next;
+	goto T;
+}
+
+:jls A, B, T is top=0 & (opcode=0x0D2 | opcode=0x092) & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!(x s< y)) goto inst_next;
+	goto T;
+}
+
+:jges A, B, T is top=0 & (opcode=0x0D3 | opcode=0x093) & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!(x s>= y)) goto inst_next;
+	goto T;
+}
+
+:jgs A, B, T is top=0 & (opcode=0x0D4 | opcode=0x094) & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!(x s> y)) goto inst_next;
+	goto T;
+}
+
+:jles A, B, T is top=0 & (opcode=0x0D5 | opcode=0x095) & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!(x s<= y)) goto inst_next;
+	goto T;
+}
+
+:jdn A, B, T is top=0 & (opcode=0x0D6 | opcode=0x096) & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!((x - y) s< 0)) goto inst_next;
+	goto T;
+}
+
+:jdpz A, B, T is top=0 & (opcode=0x0D7 | opcode=0x097) & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!((x - y) s>= 0)) goto inst_next;
+	goto T;
+}
+
+:jdp A, B, T is top=0 & (opcode=0x0D8 | opcode=0x098) & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!((x - y) s> 0)) goto inst_next;
+	goto T;
+}
+
+:jdnz A, B, T is top=0 & (opcode=0x0D9 | opcode=0x099) & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!((x - y) s<= 0)) goto inst_next;
+	goto T;
+}
+
+:jl A, B, T is top=0 & (opcode=0x0DA | opcode=0x09A) & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!(x < y)) goto inst_next;
+	goto T;
+}
+
+:jge A, B, T is top=0 & (opcode=0x0DB | opcode=0x09B) & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!(x >= y)) goto inst_next;
+	goto T;
+}
+
+:jg A, B, T is top=0 & (opcode=0x0DC | opcode=0x09C) & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!(x > y)) goto inst_next;
+	goto T;
+}
+
+:jle A, B, T is top=0 & (opcode=0x0DD | opcode=0x09D) & A & B & T {
+	local x:2 = A;
+	local y:2 = B;
+	if (!(x <= y)) goto inst_next;
+	goto T;
+}
+
+# jzx 4MS / jnzx 5MS: test the masked, shifted 32-bit value B:A
+:jzx opcode_mid, opcode_low, A, B, T is top=0 & opcode_top=4 & opcode_mid & opcode_low & A & B & T {
+	local t:4 = (zext(B) << 16) | zext(A);
+	local mask:4 = (1 << (opcode_mid + 1)) - 1;
+	if (((t >> opcode_low) & mask) != 0) goto inst_next;
+	goto T;
+}
+:jnzx opcode_mid, opcode_low, A, B, T is top=0 & opcode_top=5 & opcode_mid & opcode_low & A & B & T {
+	local t:4 = (zext(B) << 16) | zext(A);
+	local mask:4 = (1 << (opcode_mid + 1)) - 1;
+	if (((t >> opcode_low) & mask) == 0) goto inst_next;
+	goto T;
+}
+
+# jext 7f is the unconditional jump (condition register 7, bit f: "always true"); b43 calls it jmp.
+# jnext 7f never jumps.
+:jmp T is top=0 & opcode=0x77F & T {
+	goto T;
+}
+:jnext opcode_lomid, T is top=0 & opcode=0x67F & opcode_lomid & T {
+}
+
+# jnext 6CB / jext 7CB: jump on the external condition register bit CB
+:jnext opcode_lomid, T is top=0 & opcode_top=6 & opcode_lomid & T {
+	local c:1 = opcode_lomid;
+	local cond:1 = external_condition(c);
+	if (cond != 0) goto inst_next;
+	goto T;
+}
+:jext opcode_lomid, T is top=0 & opcode_top=7 & opcode_lomid & T {
+	local c:1 = opcode_lomid;
+	local cond:1 = external_condition(c);
+	if (cond == 0) goto inst_next;
+	goto T;
+}
+
+# ---- subroutines of the rev 15+ cores: a hardware stack
+:calls T is top=0 & opcode=0x004 & T & nextAddr {
+	push(nextAddr);
+	call T;
+}
+:rets is top=0 & opcode=0x005 {
+	local ret:2 = 0;
+	pop(ret);
+	return [ret];
+}
+
+# nap: wait for an event
+:nap is top=0 & opcode=0x001 {
+	nap();
+}

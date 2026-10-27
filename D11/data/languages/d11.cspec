@@ -2,23 +2,19 @@
 
 <compiler_spec>
   <data_organization>
-	<pointer_size value="2" />
+    <pointer_size value="2" />
   </data_organization>
   <global>
-    <range space="ram"/>
+    <range space="code"/>
+    <range space="shm"/>
   </global>
-  <stackpointer register="SP" space="ram"/>
-  
-  
+  <stackpointer register="SP" space="callstack" growth="positive"/>
   <default_proto>
-    <prototype name="__asmA" extrapop="2" stackshift="2" strategy="register">
+    <prototype name="__asmA" extrapop="0" stackshift="0" strategy="register">
       <input>
-       
       </input>
       <output>
-        
       </output>
     </prototype>
   </default_proto>
- 
 </compiler_spec>
